@@ -1,4 +1,6 @@
 import json
+import spacy
+nlp = spacy.load('en_core_web_lg')
 
 from flask import Flask,request ,Response          
 app = Flask(__name__)             
@@ -183,7 +185,25 @@ def find_next_argument(tx, index,utility1,utility2,depth):
     #     print(record["a.Argument"])
     # print(next_index)
 
+def match_similarity(argument1,argument2):
+    doc1 = nlp(argument1)
+    doc2 = nlp(argument2)
+    return doc1.similarity(doc2)
 
+def match_from_all_arguments(tx,data):
+    all_arguments = tx.run("MATCH (b: Argument)"
+                           "RETURN b.Argument,b.index")
+    min_cosine =-2
+    min_index =-1 
+    for arg in all_arguments:
+        a = match_similarity(arg['b.Argument'],data)
+        print(a)
+        if a>=min_cosine:
+            min_cosine=a
+            min_index=arg['b.index']
+    print("----------------- END ARGUMENT --------------")
+    print(min_index, "= ==== min_index")
+    return min_index
 
 @app.route("/process",methods=['POST'])
 def process():
@@ -200,8 +220,11 @@ def process():
     if first_argument == False:
         change = session.write_transaction(get_rattack_value,prev_index, current_argument)# attack that the user does on us
         utility1 += change
+        # current_index = session.write_transaction(match_from_all_attacking_arguments,current_argument,previous_argument)
+    else:
+        current_index = session.write_transaction(match_from_all_arguments,current_argument)
     utility1,utility2 ,next_argument = session.write_transaction(find_next_argument,current_argument,utility1,utility2,depth=3)
-    print({"current_argument":current_argument, "utility1":utility1,"utility2":utility2,"next_argument":next_argument})
+    print({"current_argument":current_index, "utility1":utility1,"utility2":utility2,"next_argument":next_argument})
     return Response({"current_argument":current_argument, "utility1":utility1,"utility2":utility2,"next_argument":next_argument},status=200)
 
 @app.route('/data/add',methods=['POST'])
@@ -223,10 +246,10 @@ def deleteHandler():
 	return "Succesfully deleted all the data"
 
 @app.route("/")
-def hello():                     
+def hello():            
 	return "Running"
 
 if __name__ == "__main__":        
-    app.run()
+    app.run(port=8080)
 
 driver.close()
